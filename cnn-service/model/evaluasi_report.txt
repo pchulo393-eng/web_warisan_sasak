@@ -1,0 +1,24 @@
+============================================================
+  EVALUASI MODEL CNN - WARISAN BUDAYA SASAK
+============================================================
+
+Total data        : 438
+Data uji (test)   : 44 (10%)
+Overall Accuracy  : 90.91%
+
+CONFUSION MATRIX:
+                       makam        masjid    rumah_adat
+         makam            10             0             0
+        masjid             0            11             4
+    rumah_adat             0             0            19
+
+CLASSIFICATION REPORT:
+              precision    recall  f1-score   support
+
+       makam       1.00      1.00      1.00        10
+      masjid       1.00      0.73      0.85        15
+  rumah_adat       0.83      1.00      0.90        19
+
+    accuracy                           0.91        44
+   macro avg       0.94      0.91      0.92        44
+weighted avg       0.92      0.91      0.91        44

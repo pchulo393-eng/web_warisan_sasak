@@ -1,0 +1,1100 @@
+# PROMPT MASTER — Website Warisan Budaya Sasak (100% Jalan di Localhost)
+
+> **Cara pakai:** Copy seluruh prompt ini, paste ke Claude Code, Cursor, atau Windsurf. Jalankan satu kali. Website langsung 100% jalan.
+
+---
+
+## IDENTITAS PROYEK
+
+Kamu adalah senior full-stack developer berpengalaman. Bangun website **"Sistem Informasi Pelestarian Warisan Budaya Kebendaan Suku Sasak"** yang berjalan 100% di localhost tanpa deployment.
+
+Website ini adalah hasil penelitian lapangan tentang 10 warisan budaya kebendaan (tangible heritage) di Lombok Timur, NTB. Ada dua jenis pengguna: **Admin** (login, kelola data) dan **Pengunjung** (lihat saja).
+
+---
+
+## TEKNOLOGI STACK (WAJIB PERSIS INI)
+
+| Bagian     | Teknologi                            |
+|------------|--------------------------------------|
+| Backend    | Laravel 10, PHP 8.2, SQLite          |
+| Frontend   | React 18 + Vite, TailwindCSS v3      |
+| Peta       | Leaflet.js 1.9 + react-leaflet v4    |
+| CNN        | Python 3.10, Flask, TensorFlow 2.13  |
+| Auth       | Laravel Sanctum (token-based)        |
+| HTTP       | Axios (dari React ke Laravel)        |
+
+**Tidak perlu:** Docker, Redis, PostgreSQL, VPS, SSL, Queue Worker.
+
+---
+
+## DATA 9 HERITAGE SASAK (WAJIB SEMUA ADA DI SEEDER)
+
+```php
+// Masukkan semua ini di HeritageSeeder.php dengan koordinat akurat
+[
+  ['nama' => 'Makam Kuno Selaparang',         'kategori' => 'makam',      'wilayah' => 'Selaparang', 'lat' => -8.5467, 'lng' => 116.6002, 'tahun' => 'Abad ke-14', 'kondisi' => 'sedang'],
+  ['nama' => 'Masjid Langgar Pusaka Sapit',   'kategori' => 'masjid',     'wilayah' => 'Suela',      'lat' => -8.4895, 'lng' => 116.5538, 'tahun' => 'Abad ke-18', 'kondisi' => 'baik'],
+  ['nama' => 'Masjid Kuno Songak Sakra',      'kategori' => 'masjid',     'wilayah' => 'Sakra',      'lat' => -8.6616, 'lng' => 116.5020, 'tahun' => 'Abad ke-16', 'kondisi' => 'sedang'],
+  ['nama' => 'Rumah Adat Bale Belek Jerowaru','kategori' => 'rumah_adat', 'wilayah' => 'Jerowaru',   'lat' => -8.7884, 'lng' => 116.4814, 'tahun' => 'Abad ke-19', 'kondisi' => 'buruk'],
+  ['nama' => 'Makam Tanjung Selaparang',      'kategori' => 'makam',      'wilayah' => 'Selaparang', 'lat' => -8.5442, 'lng' => 116.5970, 'tahun' => 'Abad ke-15', 'kondisi' => 'sedang'],
+  ['nama' => 'Rumah Adat Limbungan Suela',     'kategori' => 'rumah_adat',  'wilayah' => 'Suela',      'lat' => -8.4811, 'lng' => 116.6122, 'tahun' => 'Abad ke-13', 'kondisi' => 'baik'],
+  ['nama' => 'Rumah Adat Beleq Sembalun',      'kategori' => 'rumah_adat',  'wilayah' => 'Sembalun',   'lat' => -8.3638, 'lng' => 116.5394, 'tahun' => 'Abad ke-12', 'kondisi' => 'baik'],
+  ['nama' => 'Masjid Kuno Bilok Pitung Sembalun','kategori' => 'masjid',  'wilayah' => 'Sembalun',   'lat' => -8.2943, 'lng' => 116.4863, 'tahun' => 'Abad ke-16', 'kondisi' => 'sedang'],
+  ['nama' => 'Rumah Adat Sembalun Bumbung', 'kategori' => 'rumah_adat', 'wilayah' => 'Sembalun',   'lat' => -8.3880, 'lng' => 116.5426, 'tahun' => 'Abad ke-18', 'kondisi' => 'baik'],
+]
+```
+
+---
+
+## STRUKTUR FOLDER YANG HARUS DIBUAT
+
+```
+warisan-sasak/
+├── backend/          ← Laravel 10
+├── frontend/         ← React + Vite
+└── cnn-service/      ← Python Flask
+```
+
+---
+
+## BAGIAN 1 — BACKEND LARAVEL
+
+### 1.1 Setup Awal
+```bash
+composer create-project laravel/laravel backend
+cd backend
+composer require laravel/sanctum
+php artisan vendor:publish --provider="Laravel\Sanctum\SanctumServiceProvider"
+```
+
+### 1.2 Konfigurasi .env Backend
+```env
+APP_NAME="Warisan Budaya Sasak"
+APP_URL=http://localhost:8001
+DB_CONNECTION=sqlite
+# Hapus semua baris DB_HOST, DB_PORT, DB_DATABASE, DB_USERNAME, DB_PASSWORD
+SANCTUM_STATEFUL_DOMAINS=localhost:5174
+SESSION_DOMAIN=localhost
+CNN_SERVICE_URL=http://localhost:5001
+FILESYSTEM_DISK=public
+```
+
+### 1.3 Buat file database SQLite
+```bash
+touch database/database.sqlite
+```
+
+### 1.4 Migration — buat SEMUA file ini:
+
+**database/migrations/..._create_heritage_sites_table.php**
+```php
+Schema::create('heritage_sites', function (Blueprint $table) {
+    $table->id();
+    $table->string('nama', 200);
+    $table->string('slug', 220)->unique();
+    $table->enum('kategori', ['masjid', 'makam', 'rumah_adat', 'desa_adat']);
+    $table->decimal('lat', 10, 7);
+    $table->decimal('lng', 10, 7);
+    $table->text('deskripsi')->nullable();
+    $table->longText('sejarah')->nullable();
+    $table->string('tahun_berdiri', 50)->nullable();
+    $table->string('wilayah', 100);
+    $table->string('kecamatan', 100)->nullable();
+    $table->enum('kondisi_saat_ini', ['baik', 'sedang', 'buruk', 'belum_dikaji'])->default('belum_dikaji');
+    $table->decimal('skor_kondisi_cnn', 5, 4)->nullable();
+    $table->boolean('status_aktif')->default(true);
+    $table->timestamps();
+});
+```
+
+**database/migrations/..._create_heritage_photos_table.php**
+```php
+Schema::create('heritage_photos', function (Blueprint $table) {
+    $table->id();
+    $table->foreignId('heritage_id')->constrained('heritage_sites')->cascadeOnDelete();
+    $table->string('url_foto', 500);
+    $table->string('url_thumbnail', 500)->nullable();
+    $table->enum('label_kondisi_cnn', ['baik', 'sedang', 'buruk', 'belum_dianalisis'])->default('belum_dianalisis');
+    $table->decimal('skor_cnn', 5, 4)->nullable();
+    $table->boolean('is_primary')->default(false);
+    $table->integer('urutan')->default(0);
+    $table->timestamps();
+});
+```
+
+**database/migrations/..._create_users_table.php** (sudah ada di Laravel, tambahkan kolom role)
+```php
+$table->string('role')->default('admin');
+```
+
+### 1.5 Model
+
+**app/Models/HeritageSite.php**
+```php
+<?php
+namespace App\Models;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
+
+class HeritageSite extends Model
+{
+    protected $table = 'heritage_sites';
+    
+    protected $fillable = [
+        'nama', 'slug', 'kategori', 'lat', 'lng',
+        'deskripsi', 'sejarah', 'tahun_berdiri',
+        'wilayah', 'kecamatan', 'kondisi_saat_ini',
+        'skor_kondisi_cnn', 'status_aktif'
+    ];
+
+    protected $casts = [
+        'lat' => 'float',
+        'lng' => 'float',
+        'skor_kondisi_cnn' => 'float',
+        'status_aktif' => 'boolean',
+    ];
+
+    protected static function boot()
+    {
+        parent::boot();
+        static::creating(function ($model) {
+            if (empty($model->slug)) {
+                $model->slug = Str::slug($model->nama);
+            }
+        });
+    }
+
+    public function photos()
+    {
+        return $this->hasMany(HeritagePhoto::class, 'heritage_id')->orderBy('urutan');
+    }
+
+    public function primaryPhoto()
+    {
+        return $this->hasOne(HeritagePhoto::class, 'heritage_id')->where('is_primary', true);
+    }
+
+    public function scopeKategori($query, $kategori)
+    {
+        return $query->where('kategori', $kategori);
+    }
+
+    public function scopeWilayah($query, $wilayah)
+    {
+        return $query->where('wilayah', $wilayah);
+    }
+
+    public function toGeoJsonFeature(): array
+    {
+        return [
+            'type' => 'Feature',
+            'geometry' => [
+                'type' => 'Point',
+                'coordinates' => [$this->lng, $this->lat]
+            ],
+            'properties' => [
+                'id' => $this->id,
+                'nama' => $this->nama,
+                'kategori' => $this->kategori,
+                'wilayah' => $this->wilayah,
+                'kondisi' => $this->kondisi_saat_ini,
+                'thumbnail' => $this->primaryPhoto?->url_thumbnail,
+            ]
+        ];
+    }
+}
+```
+
+**app/Models/HeritagePhoto.php**
+```php
+<?php
+namespace App\Models;
+use Illuminate\Database\Eloquent\Model;
+
+class HeritagePhoto extends Model
+{
+    protected $fillable = [
+        'heritage_id', 'url_foto', 'url_thumbnail',
+        'label_kondisi_cnn', 'skor_cnn', 'is_primary', 'urutan'
+    ];
+
+    protected $casts = [
+        'skor_cnn' => 'float',
+        'is_primary' => 'boolean',
+    ];
+
+    public function heritage()
+    {
+        return $this->belongsTo(HeritageSite::class, 'heritage_id');
+    }
+}
+```
+
+### 1.6 Controller
+
+**app/Http/Controllers/Api/HeritageController.php**
+```php
+<?php
+namespace App\Http\Controllers\Api;
+use App\Http\Controllers\Controller;
+use App\Models\HeritageSite;
+use Illuminate\Http\Request;
+
+class HeritageController extends Controller
+{
+    // GET /api/heritage — publik, dengan filter & search
+    public function index(Request $request)
+    {
+        $query = HeritageSite::with(['primaryPhoto'])->where('status_aktif', true);
+
+        if ($request->has('kategori') && $request->kategori !== '') {
+            $query->where('kategori', $request->kategori);
+        }
+        if ($request->has('wilayah') && $request->wilayah !== '') {
+            $query->where('wilayah', $request->wilayah);
+        }
+        if ($request->has('q') && $request->q !== '') {
+            $query->where(function($q) use ($request) {
+                $q->where('nama', 'like', "%{$request->q}%")
+                  ->orWhere('deskripsi', 'like', "%{$request->q}%")
+                  ->orWhere('wilayah', 'like', "%{$request->q}%");
+            });
+        }
+
+        $data = $query->get()->map(fn($h) => [
+            'id' => $h->id,
+            'nama' => $h->nama,
+            'slug' => $h->slug,
+            'kategori' => $h->kategori,
+            'wilayah' => $h->wilayah,
+            'tahun_berdiri' => $h->tahun_berdiri,
+            'kondisi_saat_ini' => $h->kondisi_saat_ini,
+            'skor_kondisi_cnn' => $h->skor_kondisi_cnn,
+            'lat' => $h->lat,
+            'lng' => $h->lng,
+            'thumbnail' => $h->primaryPhoto?->url_thumbnail,
+        ]);
+
+        return response()->json(['data' => $data, 'total' => $data->count()]);
+    }
+
+    // GET /api/heritage/{id} — detail lengkap
+    public function show($id)
+    {
+        $heritage = HeritageSite::with('photos')->findOrFail($id);
+        return response()->json([
+            'data' => array_merge($heritage->toArray(), [
+                'foto' => $heritage->photos->map(fn($p) => [
+                    'id' => $p->id,
+                    'url_foto' => asset('storage/' . $p->url_foto),
+                    'url_thumbnail' => $p->url_thumbnail ? asset('storage/' . $p->url_thumbnail) : null,
+                    'label_kondisi_cnn' => $p->label_kondisi_cnn,
+                    'skor_cnn' => $p->skor_cnn,
+                    'is_primary' => $p->is_primary,
+                ])
+            ])
+        ]);
+    }
+
+    // GET /api/heritage/geojson — untuk Leaflet
+    public function geojson()
+    {
+        $features = HeritageSite::with('primaryPhoto')
+            ->where('status_aktif', true)
+            ->get()
+            ->map(fn($h) => $h->toGeoJsonFeature());
+
+        return response()->json([
+            'type' => 'FeatureCollection',
+            'features' => $features
+        ]);
+    }
+
+    // POST /api/admin/heritage — admin tambah (protected)
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            'nama'         => 'required|string|max:200',
+            'kategori'     => 'required|in:masjid,makam,rumah_adat,desa_adat',
+            'lat'          => 'required|numeric|between:-9.5,-8.0',
+            'lng'          => 'required|numeric|between:115.5,117.5',
+            'wilayah'      => 'required|string',
+            'deskripsi'    => 'nullable|string',
+            'sejarah'      => 'nullable|string',
+            'tahun_berdiri'=> 'nullable|string',
+            'kecamatan'    => 'nullable|string',
+            'kondisi_saat_ini' => 'nullable|in:baik,sedang,buruk,belum_dikaji',
+        ]);
+
+        $heritage = HeritageSite::create($validated);
+        return response()->json(['data' => $heritage, 'message' => 'Heritage berhasil ditambahkan'], 201);
+    }
+
+    // PUT /api/admin/heritage/{id} — admin edit (protected)
+    public function update(Request $request, $id)
+    {
+        $heritage = HeritageSite::findOrFail($id);
+        $heritage->update($request->validate([
+            'nama'         => 'sometimes|string|max:200',
+            'kategori'     => 'sometimes|in:masjid,makam,rumah_adat,desa_adat',
+            'lat'          => 'sometimes|numeric|between:-9.5,-8.0',
+            'lng'          => 'sometimes|numeric|between:115.5,117.5',
+            'wilayah'      => 'sometimes|string',
+            'deskripsi'    => 'nullable|string',
+            'sejarah'      => 'nullable|string',
+            'tahun_berdiri'=> 'nullable|string',
+            'kondisi_saat_ini' => 'nullable|in:baik,sedang,buruk,belum_dikaji',
+            'status_aktif' => 'sometimes|boolean',
+        ]));
+        return response()->json(['data' => $heritage, 'message' => 'Heritage berhasil diperbarui']);
+    }
+
+    // DELETE /api/admin/heritage/{id} — admin hapus (protected)
+    public function destroy($id)
+    {
+        HeritageSite::findOrFail($id)->delete();
+        return response()->json(['message' => 'Heritage berhasil dihapus']);
+    }
+}
+```
+
+**app/Http/Controllers/Api/PhotoController.php**
+```php
+<?php
+namespace App\Http\Controllers\Api;
+use App\Http\Controllers\Controller;
+use App\Models\HeritagePhoto;
+use App\Models\HeritageSite;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
+use Intervention\Image\Facades\Image;
+
+class PhotoController extends Controller
+{
+    public function store(Request $request, $heritageId)
+    {
+        $request->validate([
+            'foto' => 'required|file|mimes:jpeg,jpg,png,webp|max:10240',
+        ]);
+
+        $heritage = HeritageSite::findOrFail($heritageId);
+        $file = $request->file('foto');
+
+        // Simpan foto original
+        $path = $file->store('heritage-photos', 'public');
+
+        // Buat thumbnail (simpan versi kecil)
+        $thumbPath = 'heritage-photos/thumb_' . basename($path);
+        // Jika tidak ada Intervention Image, skip thumbnail
+        $thumbPathFull = null;
+        try {
+            $img = Image::make($file)->fit(400, 300);
+            Storage::disk('public')->put($thumbPath, $img->encode());
+            $thumbPathFull = $thumbPath;
+        } catch (\Throwable $e) {
+            $thumbPathFull = $path; // fallback ke foto asli
+        }
+
+        // Analisis CNN (synchronous untuk localhost — sederhana)
+        $cnnLabel = 'belum_dianalisis';
+        $cnnSkor = null;
+        try {
+            $cnnUrl = env('CNN_SERVICE_URL', 'http://localhost:5000');
+            $response = Http::timeout(15)->attach(
+                'foto',
+                Storage::disk('public')->get($path),
+                basename($path)
+            )->post("$cnnUrl/predict");
+
+            if ($response->successful()) {
+                $result = $response->json();
+                $cnnLabel = $result['label'] ?? 'belum_dianalisis';
+                $cnnSkor = $result['confidence'] ?? null;
+            }
+        } catch (\Throwable $e) {
+            // CNN tidak wajib jalan — lanjut tanpa error
+        }
+
+        // Cek apakah ini foto pertama (jadi primary otomatis)
+        $isPrimary = $heritage->photos()->count() === 0;
+
+        $foto = HeritagePhoto::create([
+            'heritage_id'       => $heritageId,
+            'url_foto'          => $path,
+            'url_thumbnail'     => $thumbPathFull,
+            'label_kondisi_cnn' => $cnnLabel,
+            'skor_cnn'          => $cnnSkor,
+            'is_primary'        => $isPrimary,
+            'urutan'            => $heritage->photos()->count(),
+        ]);
+
+        // Update kondisi heritage dari hasil CNN
+        if ($cnnLabel !== 'belum_dianalisis') {
+            $heritage->update([
+                'kondisi_saat_ini' => $cnnLabel,
+                'skor_kondisi_cnn' => $cnnSkor,
+            ]);
+        }
+
+        return response()->json([
+            'data' => [
+                'id' => $foto->id,
+                'url_foto' => asset('storage/' . $path),
+                'url_thumbnail' => asset('storage/' . $thumbPathFull),
+                'label_kondisi_cnn' => $cnnLabel,
+                'skor_cnn' => $cnnSkor,
+                'is_primary' => $isPrimary,
+            ],
+            'message' => 'Foto berhasil diupload' . ($cnnLabel !== 'belum_dianalisis' ? " — CNN: $cnnLabel" : ' — CNN belum dianalisis')
+        ], 201);
+    }
+
+    public function destroy($heritageId, $fotoId)
+    {
+        $foto = HeritagePhoto::where('heritage_id', $heritageId)->findOrFail($fotoId);
+        Storage::disk('public')->delete($foto->url_foto);
+        if ($foto->url_thumbnail && $foto->url_thumbnail !== $foto->url_foto) {
+            Storage::disk('public')->delete($foto->url_thumbnail);
+        }
+        $foto->delete();
+        return response()->json(['message' => 'Foto berhasil dihapus']);
+    }
+
+    public function setPrimary($heritageId, $fotoId)
+    {
+        HeritagePhoto::where('heritage_id', $heritageId)->update(['is_primary' => false]);
+        HeritagePhoto::where('heritage_id', $heritageId)->findOrFail($fotoId)->update(['is_primary' => true]);
+        return response()->json(['message' => 'Foto utama berhasil diubah']);
+    }
+}
+```
+
+**app/Http/Controllers/Api/AuthController.php**
+```php
+<?php
+namespace App\Http\Controllers\Api;
+use App\Http\Controllers\Controller;
+use App\Models\User;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\RateLimiter;
+
+class AuthController extends Controller
+{
+    public function login(Request $request)
+    {
+        $request->validate([
+            'email'    => 'required|email',
+            'password' => 'required',
+        ]);
+
+        // Rate limiting: 5 percobaan per 15 menit
+        $key = 'login:' . $request->ip();
+        if (RateLimiter::tooManyAttempts($key, 5)) {
+            $seconds = RateLimiter::availableIn($key);
+            return response()->json([
+                'message' => "Terlalu banyak percobaan login. Coba lagi dalam {$seconds} detik."
+            ], 429);
+        }
+
+        if (!Auth::attempt($request->only('email', 'password'))) {
+            RateLimiter::hit($key, 60 * 15);
+            return response()->json(['message' => 'Email atau password salah.'], 401);
+        }
+
+        RateLimiter::clear($key);
+        $user = Auth::user();
+        $token = $user->createToken('admin-token')->plainTextToken;
+
+        return response()->json([
+            'token' => $token,
+            'user'  => ['id' => $user->id, 'nama' => $user->name, 'email' => $user->email],
+            'message' => 'Login berhasil'
+        ]);
+    }
+
+    public function logout(Request $request)
+    {
+        $request->user()->currentAccessToken()->delete();
+        return response()->json(['message' => 'Logout berhasil']);
+    }
+
+    public function me(Request $request)
+    {
+        return response()->json(['user' => $request->user()]);
+    }
+}
+```
+
+### 1.7 Routes
+
+**routes/api.php**
+```php
+<?php
+use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\HeritageController;
+use App\Http\Controllers\Api\PhotoController;
+use Illuminate\Support\Facades\Route;
+
+// === PUBLIK (tanpa login) ===
+Route::get('/heritage/geojson', [HeritageController::class, 'geojson']);
+Route::get('/heritage', [HeritageController::class, 'index']);
+Route::get('/heritage/{id}', [HeritageController::class, 'show']);
+
+// === AUTH ===
+Route::post('/auth/login', [AuthController::class, 'login']);
+Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/auth/logout', [AuthController::class, 'logout']);
+    Route::get('/auth/me', [AuthController::class, 'me']);
+
+    // CRUD Heritage
+    Route::post('/admin/heritage', [HeritageController::class, 'store']);
+    Route::put('/admin/heritage/{id}', [HeritageController::class, 'update']);
+    Route::delete('/admin/heritage/{id}', [HeritageController::class, 'destroy']);
+
+    // Foto
+    Route::post('/admin/heritage/{id}/photos', [PhotoController::class, 'store']);
+    Route::delete('/admin/heritage/{heritageId}/photos/{fotoId}', [PhotoController::class, 'destroy']);
+    Route::patch('/admin/heritage/{heritageId}/photos/{fotoId}/primary', [PhotoController::class, 'setPrimary']);
+});
+```
+
+### 1.8 CORS — config/cors.php
+```php
+'allowed_origins' => ['http://localhost:5173'],
+'allowed_methods' => ['*'],
+'allowed_headers' => ['*'],
+'exposed_headers' => [],
+'max_age'         => 0,
+'supports_credentials' => true,
+```
+
+### 1.9 Seeder
+
+**database/seeders/DatabaseSeeder.php**
+```php
+// panggil HeritageSeeder dan AdminSeeder
+$this->call([AdminSeeder::class, HeritageSeeder::class]);
+```
+
+**database/seeders/AdminSeeder.php**
+```php
+User::create([
+    'name' => 'Admin Warisan',
+    'email' => 'admin@warisan.com',
+    'password' => Hash::make('admin123'),
+    'role' => 'admin',
+]);
+```
+
+**database/seeders/HeritageSeeder.php** — isi lengkap dengan 10 data di atas.
+
+### 1.10 Jalankan Backend
+```bash
+php artisan storage:link
+php artisan migrate:fresh --seed
+php artisan serve
+# Backend jalan di http://localhost:8000
+```
+
+---
+
+## BAGIAN 2 — FRONTEND REACT
+
+### 2.1 Setup Awal
+```bash
+npm create vite@latest frontend -- --template react
+cd frontend
+npm install axios react-router-dom leaflet react-leaflet leaflet.markercluster
+npm install -D tailwindcss postcss autoprefixer
+npx tailwindcss init -p
+```
+
+### 2.2 File .env Frontend
+```env
+VITE_API_BASE_URL=http://localhost:8000
+```
+
+### 2.3 Fix Leaflet di Vite — src/fix-leaflet-icons.js
+```js
+import L from 'leaflet';
+import iconUrl from 'leaflet/dist/images/marker-icon.png';
+import iconRetinaUrl from 'leaflet/dist/images/marker-icon-2x.png';
+import shadowUrl from 'leaflet/dist/images/marker-shadow.png';
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({ iconUrl, iconRetinaUrl, shadowUrl });
+```
+
+### 2.4 src/main.jsx
+```jsx
+import React from 'react'
+import ReactDOM from 'react-dom/client'
+import App from './App.jsx'
+import './index.css'
+import 'leaflet/dist/leaflet.css'
+import './fix-leaflet-icons.js'
+ReactDOM.createRoot(document.getElementById('root')).render(<App />)
+```
+
+### 2.5 src/services/api.js
+```js
+import axios from 'axios';
+
+const api = axios.create({
+  baseURL: import.meta.env.VITE_API_BASE_URL + '/api',
+  headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }
+});
+
+// Pasang token otomatis ke semua request
+api.interceptors.request.use(config => {
+  const token = localStorage.getItem('admin_token');
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
+// Auto redirect jika 401
+api.interceptors.response.use(
+  res => res,
+  err => {
+    if (err.response?.status === 401) {
+      localStorage.removeItem('admin_token');
+      window.location.href = '/login';
+    }
+    return Promise.reject(err);
+  }
+);
+
+export const heritageApi = {
+  getAll: (params) => api.get('/heritage', { params }),
+  getById: (id) => api.get(`/heritage/${id}`),
+  getGeoJson: () => api.get('/heritage/geojson'),
+  create: (data) => api.post('/admin/heritage', data),
+  update: (id, data) => api.put(`/admin/heritage/${id}`, data),
+  delete: (id) => api.delete(`/admin/heritage/${id}`),
+  uploadPhoto: (heritageId, formData) => api.post(
+    `/admin/heritage/${heritageId}/photos`, formData,
+    { headers: { 'Content-Type': 'multipart/form-data' } }
+  ),
+  deletePhoto: (heritageId, fotoId) => api.delete(`/admin/heritage/${heritageId}/photos/${fotoId}`),
+};
+
+export const authApi = {
+  login: (email, password) => api.post('/auth/login', { email, password }),
+  logout: () => api.post('/auth/logout'),
+  me: () => api.get('/auth/me'),
+};
+
+export default api;
+```
+
+### 2.6 src/App.jsx — Router Utama
+```jsx
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import BerandaPage from './pages/BerandaPage';
+import HeritagePage from './pages/HeritagePage';
+import DetailPage from './pages/DetailPage';
+import PetaPage from './pages/PetaPage';
+import LoginPage from './pages/LoginPage';
+import DashboardPage from './pages/admin/DashboardPage';
+import HeritageAdminPage from './pages/admin/HeritageAdminPage';
+import HeritageFormPage from './pages/admin/HeritageFormPage';
+import FotoPage from './pages/admin/FotoPage';
+
+const isAdmin = () => !!localStorage.getItem('admin_token');
+const PrivateRoute = ({ children }) => isAdmin() ? children : <Navigate to="/login" />;
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        {/* PUBLIK */}
+        <Route path="/" element={<BerandaPage />} />
+        <Route path="/heritage" element={<HeritagePage />} />
+        <Route path="/heritage/:id" element={<DetailPage />} />
+        <Route path="/peta" element={<PetaPage />} />
+        <Route path="/login" element={<LoginPage />} />
+        {/* ADMIN */}
+        <Route path="/admin" element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
+        <Route path="/admin/heritage" element={<PrivateRoute><HeritageAdminPage /></PrivateRoute>} />
+        <Route path="/admin/heritage/tambah" element={<PrivateRoute><HeritageFormPage /></PrivateRoute>} />
+        <Route path="/admin/heritage/:id/edit" element={<PrivateRoute><HeritageFormPage /></PrivateRoute>} />
+        <Route path="/admin/heritage/:id/foto" element={<PrivateRoute><FotoPage /></PrivateRoute>} />
+      </Routes>
+    </BrowserRouter>
+  );
+}
+```
+
+### 2.7 Komponen Peta — src/components/HeritageMap.jsx
+```jsx
+import { useEffect, useState } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, LayersControl } from 'react-leaflet';
+import L from 'leaflet';
+import { heritageApi } from '../services/api';
+
+const ICONS = {
+  masjid:     { color: '#1D9E75', label: 'Masjid' },
+  makam:      { color: '#888780', label: 'Makam' },
+  rumah_adat: { color: '#854F0B', label: 'Rumah Adat' },
+  desa_adat:  { color: '#7F77DD', label: 'Desa Adat' },
+};
+
+const makeIcon = (kategori) => L.divIcon({
+  className: '',
+  html: `<div style="
+    width:32px;height:32px;border-radius:50% 50% 50% 0;
+    background:${ICONS[kategori]?.color || '#666'};
+    border:2px solid white;
+    box-shadow:0 2px 6px rgba(0,0,0,.3);
+    transform:rotate(-45deg);
+  "></div>`,
+  iconSize: [32, 32],
+  iconAnchor: [16, 32],
+  popupAnchor: [0, -32],
+});
+
+export default function HeritageMap({ filter = {}, onSelect }) {
+  const [features, setFeatures] = useState([]);
+
+  useEffect(() => {
+    heritageApi.getGeoJson().then(res => setFeatures(res.data.features));
+  }, []);
+
+  const filtered = features.filter(f => {
+    const p = f.properties;
+    if (filter.kategori && p.kategori !== filter.kategori) return false;
+    if (filter.wilayah && p.wilayah !== filter.wilayah) return false;
+    return true;
+  });
+
+  const KONDISI_WARNA = { baik: '#1D9E75', sedang: '#BA7517', buruk: '#E24B4A', belum_dikaji: '#888' };
+
+  return (
+    <MapContainer center={[-8.65, 116.35]} zoom={10} style={{ height: '100%', width: '100%' }}>
+      <LayersControl position="topright">
+        <LayersControl.BaseLayer checked name="OpenStreetMap">
+          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            attribution='&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>' />
+        </LayersControl.BaseLayer>
+        <LayersControl.BaseLayer name="Satelit">
+          <TileLayer url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+            attribution="&copy; Esri" />
+        </LayersControl.BaseLayer>
+      </LayersControl>
+
+      {filtered.map(f => (
+        <Marker
+          key={f.properties.id}
+          position={[f.geometry.coordinates[1], f.geometry.coordinates[0]]}
+          icon={makeIcon(f.properties.kategori)}
+        >
+          <Popup>
+            <div style={{ minWidth: 180 }}>
+              {f.properties.thumbnail && (
+                <img src={f.properties.thumbnail} alt={f.properties.nama}
+                  style={{ width: '100%', height: 90, objectFit: 'cover', borderRadius: 4, marginBottom: 8 }} />
+              )}
+              <strong style={{ fontSize: 13 }}>{f.properties.nama}</strong>
+              <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>{f.properties.wilayah}</div>
+              <div style={{ marginTop: 4, display: 'flex', gap: 4, alignItems: 'center' }}>
+                <span style={{
+                  background: KONDISI_WARNA[f.properties.kondisi],
+                  color: 'white', fontSize: 10, padding: '2px 6px', borderRadius: 4
+                }}>
+                  {f.properties.kondisi?.toUpperCase() || 'BELUM DIKAJI'}
+                </span>
+              </div>
+              <div style={{ marginTop: 8, display: 'flex', gap: 4 }}>
+                <a href={`/heritage/${f.properties.id}`}
+                  style={{ fontSize: 11, padding: '4px 8px', background: '#1D9E75', color: 'white', borderRadius: 4, textDecoration: 'none' }}>
+                  Detail
+                </a>
+                <a href={`https://maps.google.com/maps?q=${f.geometry.coordinates[1]},${f.geometry.coordinates[0]}`}
+                  target="_blank" rel="noreferrer"
+                  style={{ fontSize: 11, padding: '4px 8px', background: '#378ADD', color: 'white', borderRadius: 4, textDecoration: 'none' }}>
+                  Navigasi
+                </a>
+              </div>
+            </div>
+          </Popup>
+        </Marker>
+      ))}
+    </MapContainer>
+  );
+}
+```
+
+### 2.8 Halaman Beranda — src/pages/BerandaPage.jsx
+Buat halaman beranda dengan:
+- Navbar: logo "Warisan Sasak", link Beranda/Heritage/Peta, tombol Masuk Admin
+- Hero section: judul besar, subjudul, tombol "Jelajahi Peta" dan "Lihat Heritage"
+- Peta Leaflet fullwidth height 500px dengan semua 10 marker
+- Grid 10 kartu heritage (nama, foto thumbnail, kategori badge, kondisi badge, tombol Detail)
+- Footer: nama proyek, institusi
+
+### 2.9 Halaman Daftar Heritage — src/pages/HeritagePage.jsx
+Buat halaman dengan:
+- Search bar (debounce 300ms)
+- Filter dropdown: Kategori (Semua/Masjid/Makam/Rumah Adat/Desa Adat)
+- Filter dropdown: Wilayah (Semua/Suela/Sakra/Jerowaru/Selaparang/Sembalun)
+- Grid kartu heritage yang difilter
+- Badge kondisi per kartu (warna hijau/kuning/merah)
+
+### 2.10 Halaman Detail — src/pages/DetailPage.jsx
+Buat halaman dengan:
+- Breadcrumb: Beranda → Heritage → {nama}
+- Layout 2 kolom (desktop): kiri galeri+deskripsi, kanan info+peta mini
+- Galeri foto: foto utama besar, thumbnail strip, klik ganti foto utama
+- Badge label CNN di setiap foto: Baik (hijau), Sedang (kuning), Buruk (merah), Belum Dianalisis (abu)
+- Info: nama, kategori, wilayah, tahun berdiri, kondisi keseluruhan
+- Peta mini Leaflet (200px, tidak interaktif)
+- Tombol "Buka di Google Maps" dan "Buka di Waze"
+
+### 2.11 Halaman Login — src/pages/LoginPage.jsx
+```jsx
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { authApi } from '../services/api';
+
+export default function LoginPage() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    try {
+      const res = await authApi.login(email, password);
+      localStorage.setItem('admin_token', res.data.token);
+      navigate('/admin');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Login gagal. Periksa email dan password.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="bg-white p-8 rounded-xl shadow w-full max-w-sm">
+        <h1 className="text-2xl font-semibold text-gray-800 mb-1">Masuk Admin</h1>
+        <p className="text-sm text-gray-500 mb-6">Warisan Budaya Sasak</p>
+        {error && <div className="bg-red-50 text-red-700 text-sm p-3 rounded-lg mb-4">{error}</div>}
+        <form onSubmit={handleLogin} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} required
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              placeholder="admin@warisan.com" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)} required
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+          </div>
+          <button type="submit" disabled={loading}
+            className="w-full bg-emerald-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50">
+            {loading ? 'Memproses...' : 'Masuk'}
+          </button>
+        </form>
+        <p className="text-xs text-gray-400 text-center mt-4">
+          Demo: admin@warisan.com / admin123
+        </p>
+      </div>
+    </div>
+  );
+}
+```
+
+### 2.12 Halaman Admin Dashboard — src/pages/admin/DashboardPage.jsx
+Buat dashboard dengan:
+- Navbar admin: logo, link ke Heritage/Foto, tombol Logout
+- Kartu statistik: Total Heritage, Kondisi Baik, Kondisi Sedang, Kondisi Buruk
+- Tabel daftar heritage: nama, kategori, wilayah, kondisi, tombol Edit/Foto/Hapus
+- Tombol "Tambah Heritage"
+
+### 2.13 Form Tambah/Edit Heritage — src/pages/admin/HeritageFormPage.jsx
+Buat form dengan:
+- Semua field: nama, kategori (select), wilayah (select), kecamatan, tahun_berdiri, deskripsi (textarea), sejarah (textarea), kondisi_saat_ini (select), status_aktif (toggle)
+- Peta Leaflet untuk pick koordinat: klik di peta → set marker + update lat/lng
+- Input lat dan lng read-only, otomatis terisi dari klik peta
+- Validasi: lat -9.5 s/d -8.0, lng 115.5 s/d 117.5
+- Submit → POST atau PUT tergantung mode (tambah/edit)
+
+### 2.14 Halaman Kelola Foto — src/pages/admin/FotoPage.jsx
+Buat halaman dengan:
+- Judul heritage yang sedang dikelola
+- Grid foto yang sudah ada: thumbnail, label CNN, badge kondisi, tombol Hapus dan Set Primary
+- Dropzone upload foto baru (input file, bisa pilih multiple)
+- Progress saat upload
+- Setelah upload: tampilkan hasil label CNN langsung
+
+---
+
+## BAGIAN 3 — CNN SERVICE PYTHON
+
+### 3.1 Setup
+```bash
+mkdir cnn-service && cd cnn-service
+pip install flask tensorflow pillow numpy
+```
+
+### 3.2 cnn-service/app.py
+```python
+from flask import Flask, request, jsonify
+import numpy as np
+import os
+import io
+from PIL import Image
+
+app = Flask(__name__)
+
+# Load model saat startup
+model = None
+CLASS_LABELS = ['baik', 'sedang', 'buruk']
+
+def load_model():
+    global model
+    model_path = os.path.join(os.path.dirname(__file__), 'model', 'heritage_cnn.h5')
+    if os.path.exists(model_path):
+        import tensorflow as tf
+        model = tf.keras.models.load_model(model_path)
+        print(f"✅ Model CNN berhasil dimuat dari {model_path}")
+    else:
+        print("⚠️  Model CNN tidak ditemukan — endpoint /predict akan return dummy data")
+
+def preprocess_image(image_bytes):
+    img = Image.open(io.BytesIO(image_bytes)).convert('RGB')
+    img = img.resize((224, 224))
+    arr = np.array(img, dtype=np.float32) / 255.0
+    # Normalize ImageNet
+    mean = np.array([0.485, 0.456, 0.406])
+    std  = np.array([0.229, 0.224, 0.225])
+    arr = (arr - mean) / std
+    return np.expand_dims(arr, axis=0)
+
+@app.route('/health', methods=['GET'])
+def health():
+    return jsonify({
+        'status': 'ok',
+        'model_loaded': model is not None,
+        'message': 'CNN Service berjalan'
+    })
+
+@app.route('/predict', methods=['POST'])
+def predict():
+    if 'foto' not in request.files:
+        return jsonify({'error': 'File foto tidak ditemukan'}), 400
+
+    file = request.files['foto']
+    if file.filename == '':
+        return jsonify({'error': 'Nama file kosong'}), 400
+
+    try:
+        image_bytes = file.read()
+
+        # Jika model belum dimuat, return dummy data
+        if model is None:
+            # Dummy: acak untuk testing
+            import random
+            label = random.choice(CLASS_LABELS)
+            skor = round(random.uniform(0.6, 0.95), 4)
+            return jsonify({
+                'label': label,
+                'confidence': skor,
+                'skor_baik':   round(random.uniform(0.0, 0.3), 4),
+                'skor_sedang': round(random.uniform(0.0, 0.3), 4),
+                'skor_buruk':  round(random.uniform(0.0, 0.3), 4),
+                'model_version': 'dummy-v0',
+                'perlu_verifikasi': skor < 0.60,
+                'catatan': 'Model belum dimuat — hasil ini adalah dummy untuk testing'
+            })
+
+        # Proses dengan model sungguhan
+        arr = preprocess_image(image_bytes)
+        predictions = model.predict(arr)[0]
+        idx = int(np.argmax(predictions))
+        label = CLASS_LABELS[idx]
+        confidence = float(predictions[idx])
+
+        return jsonify({
+            'label': label,
+            'confidence': round(confidence, 4),
+            'skor_baik':   round(float(predictions[0]), 4),
+            'skor_sedang': round(float(predictions[1]), 4),
+            'skor_buruk':  round(float(predictions[2]), 4),
+            'model_version': 'v1.0',
+            'perlu_verifikasi': confidence < 0.60
+        })
+
+    except Exception as e:
+        return jsonify({'error': str(e), 'label': None}), 500
+
+if __name__ == '__main__':
+    load_model()
+    print("🚀 CNN Service berjalan di http://localhost:5000")
+    app.run(host='0.0.0.0', port=5000, debug=True)
+```
+
+> **Catatan:** CNN akan jalan dengan dummy data acak jika file model `.h5` belum ada. Ini memungkinkan testing website tanpa harus training CNN dulu. Upload foto tetap berhasil, label CNN akan berupa nilai acak sementara.
+
+---
+
+## CARA MENJALANKAN SEMUA (SETELAH SELESAI DIBUAT)
+
+### Terminal 1 — Backend
+```bash
+cd backend
+php artisan serve
+# ✅ http://localhost:8000
+```
+
+### Terminal 2 — Frontend
+```bash
+cd frontend
+npm run dev
+# ✅ http://localhost:5173
+```
+
+### Terminal 3 — CNN
+```bash
+cd cnn-service
+python app.py
+# ✅ http://localhost:5000
+```
+
+### Buka Browser
+```
+http://localhost:5173          → Halaman utama pengunjung
+http://localhost:5173/peta     → Peta interaktif
+http://localhost:5173/login    → Login admin (admin@warisan.com / admin123)
+http://localhost:5173/admin    → Dashboard admin
+http://localhost:8000/api/heritage → Test API langsung
+http://localhost:5000/health   → Test CNN service
+```
+
+---
+
+## CHECKLIST AKHIR — VERIFIKASI SEBELUM SELESAI
+
+- [ ] `php artisan migrate:fresh --seed` berhasil tanpa error
+- [ ] `php artisan storage:link` berhasil
+- [ ] GET `localhost:8000/api/heritage` mengembalikan 10 data heritage
+- [ ] GET `localhost:8000/api/heritage/geojson` mengembalikan GeoJSON dengan 10 features
+- [ ] `localhost:5173` terbuka, peta muncul dengan 10 marker
+- [ ] Klik marker → popup muncul dengan nama, kondisi, tombol Detail & Navigasi
+- [ ] Filter kategori Masjid → hanya tampil 5 masjid
+- [ ] Filter wilayah Sembalun → tampil 3 heritage
+- [ ] Search "Masjid" → tampil hasil yang relevan
+- [ ] Login dengan admin@warisan.com / admin123 → berhasil masuk dashboard
+- [ ] Tambah heritage baru via form admin → muncul di peta
+- [ ] Upload foto → berhasil, tampil label CNN (baik/sedang/buruk atau dummy)
+- [ ] Hapus heritage → hilang dari list dan peta
+- [ ] Tombol "Buka di Google Maps" → membuka Google Maps di tab baru dengan koordinat benar
+- [ ] Logout → redirect ke halaman login, tidak bisa akses /admin

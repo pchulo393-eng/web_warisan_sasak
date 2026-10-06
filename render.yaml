@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: warisan-backend
+    env: docker
+    dockerfilePath: backend/Dockerfile
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: false
+      - key: PORT
+        value: 8001
+
+  - type: web
+    name: warisan-cnn
+    env: docker
+    dockerfilePath: cnn-service/Dockerfile
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: PORT
+        value: 5001
+
+  - type: web
+    name: warisan-frontend
+    env: docker
+    dockerfilePath: frontend/Dockerfile
+    envVars:
+      - key: PORT
+        value: 80

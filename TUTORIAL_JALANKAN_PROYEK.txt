@@ -1,0 +1,140 @@
+================================================================
+   TUTORIAL MENJALANKAN PROYEK WARISAN BUDAYA SASAK
+================================================================
+
+PRASYARAT (WAJIB INSTAL TERLEBIH DAHULU):
+--------------------------------------------
+1. PHP 8.x        → php -v
+2. Composer        → composer -V
+3. Node.js 18+     → node -v
+4. Python 3.10+    → python --version
+5. npm             → npm -v
+
+
+=========================================================
+LANGKAH 1: SETUP DATABASE (pertama kali saja)
+=========================================================
+Buka terminal/powershell, jalankan:
+
+    cd D:\warisan-sasak\backend
+    php artisan migrate:fresh --seed
+    php artisan storage:link
+
+
+=========================================================
+LANGKAH 2: INSTALL DEPENDENCIES FRONTEND
+=========================================================
+    cd D:\warisan-sasak\frontend
+    npm install
+
+
+=========================================================
+LANGKAH 3: SETUP ENVIRONMENT PYTHON (CNN SERVICE)
+=========================================================
+Buka PowerShell, jalankan:
+
+    Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
+    & D:\warisan-sasak\cnn-env\Scripts\Activate.ps1
+
+Install dependencies Python (jika belum):
+
+    cd D:\warisan-sasak\cnn-service
+    pip install torch torchvision scikit-learn flask pillow numpy
+
+
+=========================================================
+LANGKAH 4: TRAINING MODEL CNN
+=========================================================
+Pastikan dataset tersedia di folder:
+    D:\warisan-sasak\cnn-service\dataset\
+    ├── makam\       (minimal 20 foto)
+    ├── masjid\      (minimal 20 foto)
+    └── rumah_adat\  (minimal 20 foto)
+
+Jalankan training:
+
+    cd D:\warisan-sasak\cnn-service
+    python train.py
+
+Proses:
+- MobileNetV2 (transfer learning)
+- 8 epoch, batch size 16, learning rate 0.0005
+- Split 70% train / 30% test
+- Otomatis evaluasi setelah training selesai
+- Model tersimpan di: model/heritage_type_cnn.pth
+- Laporan tersimpan di: model/evaluasi_report.txt
+
+Untuk evaluasi standalone (tanpa training ulang):
+
+    python evaluate.py
+
+
+=========================================================
+LANGKAH 5: JALANKAN SEMUA LAYANAN
+=========================================================
+Cara cepat - jalankan run.bat:
+
+    D:\warisan-sasak\run.bat
+
+Atau jalankan manual satu per satu:
+
+Terminal 1 - Backend Laravel (port 8001):
+    cd D:\warisan-sasak\backend
+    php artisan serve --port=8001
+
+Terminal 2 - CNN Service Python (port 5002):
+    cd D:\warisan-sasak\cnn-service
+    python app.py
+
+Terminal 3 - Frontend React (port 5174):
+    cd D:\warisan-sasak\frontend
+    npm run dev
+
+
+=========================================================
+LANGKAH 6: AKSES APLIKASI
+=========================================================
+Buka browser: http://localhost:5174
+
+Login admin:
+    Email    : admin@warisan.com
+    Password : admin123
+
+API Endpoints:
+    Backend   : http://localhost:8001
+    CNN       : http://localhost:5002
+    Frontend  : http://localhost:5174
+
+
+=========================================================
+STRUKTUR FOLDERS
+=========================================================
+D:\warisan-sasak\
+├── backend\          → Laravel (PHP)
+├── frontend\         → React (Vite)
+├── cnn-service\      → Python (PyTorch + Flask)
+│   ├── app.py        → REST API CNN (port 5002)
+│   ├── train.py      → Training model
+│   ├── evaluate.py   → Evaluasi model
+│   ├── dataset\      → Dataset foto warisan
+│   ├── model\        → Model .pth & laporan
+│   └── requirements.txt
+├── cnn-env\          → Virtual environment Python
+├── run.bat           → Jalankan semua layanan
+├── setup.bat         → Setup pertama kali
+└── train.bat         → Shortcut training CNN
+
+
+=========================================================
+CATATAN PENTING
+=========================================================
+- Training CNN butuh waktu beberapa menit
+- Minimal 20 foto per kelas untuk training
+- Model MobileNetV2, input 224x224 RGB
+- 3 kelas: makam, masjid, rumah_adat
+- Akurasi terakhir: 85.61%
+
+Jika ada error model tidak cocok, hapus file .pth
+lalu training ulang: python train.py
+
+================================================================
